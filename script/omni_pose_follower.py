@@ -83,6 +83,7 @@ class OmniPoseFollower(object):
                                          auto_start=False)
         self.server.start()
 
+
     def js_cb(self, js):
         self.current_pose = self.js_to_kdl(js.position[self.x_index_js],
                                            js.position[self.y_index_js],
@@ -125,7 +126,7 @@ class OmniPoseFollower(object):
             z_index = data.trajectory.joint_names.index(z_joint)
             i = 1
             time_tolerance = 0.1
-            while i < len(data.trajectory.points):
+            while i < len(data.trajectory.points) and not self.server.is_preempt_requested():
                 current_point = data.trajectory.points[i]
                 time_from_start = rospy.get_rostime().to_sec() - self.start_time
                 if time_from_start < current_point.time_from_start.to_sec():
@@ -143,6 +144,7 @@ class OmniPoseFollower(object):
             self.server.set_succeeded()
         except:
             traceback.print_exc()
+            rospy.loginfo('aborted current goal')
             self.server.set_aborted()
         finally:
             self.current_goal = None
