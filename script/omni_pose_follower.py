@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import traceback
+
 import PyKDL
 import rospy
 from actionlib import SimpleActionServer
@@ -69,9 +71,9 @@ class OmniPoseFollower(object):
         self.cmd_vel_sub = rospy.Publisher('~cmd_vel', Twist, queue_size=10)
 
         js = rospy.wait_for_message('~joint_states', JointState)
-        self.x_index = js.name.index(x_joint)
-        self.y_index = js.name.index(y_joint)
-        self.z_index = js.name.index(z_joint)
+        self.x_index_js = js.name.index(x_joint)
+        self.y_index_js = js.name.index(y_joint)
+        self.z_index_js = js.name.index(z_joint)
         self.current_goal = None
         self.js_sub = rospy.Subscriber('~joint_states', JointState, self.js_cb, queue_size=10)
         self.state_pub = rospy.Publisher('~state', JointTrajectoryControllerState, queue_size=10)
@@ -82,9 +84,9 @@ class OmniPoseFollower(object):
         self.server.start()
 
     def js_cb(self, js):
-        self.current_pose = self.js_to_kdl(js.position[self.x_index],
-                                           js.position[self.y_index],
-                                           js.position[self.z_index])
+        self.current_pose = self.js_to_kdl(js.position[self.x_index_js],
+                                           js.position[self.y_index_js],
+                                           js.position[self.z_index_js])
 
         goal = self.current_goal
         if goal:
@@ -118,15 +120,18 @@ class OmniPoseFollower(object):
         try:
             self.start_time = rospy.get_rostime().to_sec()
             self.last_error = PyKDL.Twist()
+            x_index = data.trajectory.joint_names.index(x_joint)
+            y_index = data.trajectory.joint_names.index(y_joint)
+            z_index = data.trajectory.joint_names.index(z_joint)
             i = 1
             time_tolerance = 0.1
             while i < len(data.trajectory.points):
                 current_point = data.trajectory.points[i]
                 time_from_start = rospy.get_rostime().to_sec() - self.start_time
                 if time_from_start < current_point.time_from_start.to_sec():
-                    self.current_goal = self.js_to_kdl(current_point.positions[self.x_index],
-                                                       current_point.positions[self.y_index],
-                                                       current_point.positions[self.z_index])
+                    self.current_goal = self.js_to_kdl(current_point.positions[x_index],
+                                                       current_point.positions[y_index],
+                                                       current_point.positions[z_index])
                 else:
                     i += 1
                 tfs = rospy.get_rostime().to_sec() - self.start_time
@@ -137,6 +142,7 @@ class OmniPoseFollower(object):
             self.current_goal = None
             self.server.set_succeeded()
         except:
+            traceback.print_exc()
             self.server.set_aborted()
         finally:
             self.current_goal = None
