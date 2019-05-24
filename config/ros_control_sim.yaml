@@ -1,0 +1,11 @@
+whole_body_controller/base:
+  type: omni_pose_follower
+  odom_x_joint: &odom_x_joint odom_x_joint
+  odom_y_joint: &odom_y_joint odom_y_joint
+  odom_z_joint: &odom_z_joint odom_z_joint
+  p: 10
+  d: 0
+  joints:
+    - *odom_x_joint
+    - *odom_y_joint
+    - *odom_z_joint

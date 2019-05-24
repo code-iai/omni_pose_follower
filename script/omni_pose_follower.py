@@ -65,19 +65,19 @@ class OmniPoseFollower(object):
     def __init__(self):
         urdf = rospy.get_param('robot_description')
         self.urdf = URDF.from_xml_string(hacky_urdf_parser_fix(urdf))
-        self.x_limit = self.urdf.joint_map['odom_x_joint'].limit.velocity
-        self.y_limit = self.urdf.joint_map['odom_y_joint'].limit.velocity
-        self.z_limit = self.urdf.joint_map['odom_z_joint'].limit.velocity
+        self.x_limit = self.urdf.joint_map[x_joint].limit.velocity
+        self.y_limit = self.urdf.joint_map[y_joint].limit.velocity
+        self.z_limit = self.urdf.joint_map[z_joint].limit.velocity
         self.cmd_vel_sub = rospy.Publisher('~cmd_vel', Twist, queue_size=10)
 
-        js = rospy.wait_for_message('~joint_states', JointState)
+        js = rospy.wait_for_message('/joint_states', JointState)
         self.x_index_js = js.name.index(x_joint)
         self.y_index_js = js.name.index(y_joint)
         self.z_index_js = js.name.index(z_joint)
         self.current_goal = None
-        self.js_sub = rospy.Subscriber('~joint_states', JointState, self.js_cb, queue_size=10)
-        self.state_pub = rospy.Publisher('~state', JointTrajectoryControllerState, queue_size=10)
-        self.server = SimpleActionServer('~follow_joint_trajectory',
+        self.js_sub = rospy.Subscriber('/joint_states', JointState, self.js_cb, queue_size=10)
+        self.state_pub = rospy.Publisher('{}/state'.format(name_space), JointTrajectoryControllerState, queue_size=10)
+        self.server = SimpleActionServer('{}/follow_joint_trajectory'.format(name_space),
                                          FollowJointTrajectoryAction,
                                          self.execute_cb,
                                          auto_start=False)
@@ -161,11 +161,12 @@ class OmniPoseFollower(object):
 if __name__ == '__main__':
     try:
         rospy.init_node('omni_pose_follower')
-        x_joint = rospy.get_param('~odom_x_joint')
-        y_joint = rospy.get_param('~odom_y_joint')
-        z_joint = rospy.get_param('~odom_z_joint')
-        p = rospy.get_param('~p')
-        d = rospy.get_param('~d')
+        name_space = rospy.get_param('~name_space')
+        x_joint = rospy.get_param('{}/odom_x_joint'.format(name_space))
+        y_joint = rospy.get_param('{}/odom_y_joint'.format(name_space))
+        z_joint = rospy.get_param('{}/odom_z_joint'.format(name_space))
+        p = rospy.get_param('{}/p'.format(name_space))
+        d = rospy.get_param('{}/d'.format(name_space))
         opf = OmniPoseFollower()
         rospy.loginfo('pose follower running')
         rospy.spin()

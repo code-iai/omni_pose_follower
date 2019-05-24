@@ -1,19 +1,11 @@
 <launch>
-    <arg name="odom_x_joint" default="odom_x_joint"/>
-    <arg name="odom_y_joint" default="odom_y_joint"/>
-    <arg name="odom_z_joint" default="odom_z_joint"/>
-    <arg name="p" default="10"/>
-    <arg name="d" default="0"/>
-
-  <node pkg="omni_pose_follower" type="omni_pose_follower.py" name="omni_pose_follower" output="screen">
-    <param name="odom_x_joint" value="$(arg odom_x_joint)"/>
-    <param name="odom_y_joint" value="$(arg odom_y_joint)"/>
-    <param name="odom_z_joint" value="$(arg odom_z_joint)"/>
-    <param name="p" value="$(arg p)"/>
-    <param name="d" value="$(arg d)"/>
-    <remap from="~cmd_vel" to="/cmd_vel"/>
-    <remap from="~joint_states" to="/joint_states"/>
-    <remap from="~follow_joint_trajectory" to="/whole_body_controller/follow_joint_trajectory/base"/>
-    <remap from="~state" to="/whole_body_controller/base/state"/>
-  </node>
+    <arg name="name_space" default="whole_body_controller/base"/>
+    <rosparam command="load" file="$(find omni_pose_follower)/config/ros_control_sim.yaml" />
+    <node pkg="omni_pose_follower" type="omni_pose_follower.py" name="omni_pose_follower" output="screen">
+        <remap from="~/cmd_vel" to="/cmd_vel"/>
+        <!-- <remap from="~/joint_states" to="/joint_states"/> -->
+        <!-- <remap from="~follow_joint_trajectory" to="/whole_body_controller/base/follow_joint_trajectory"/> -->
+        <!-- <remap from="~state" to="/whole_body_controller/base/state"/> -->
+        <param name="name_space" value="$(arg name_space)"/>
+    </node>
 </launch>
