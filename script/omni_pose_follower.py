@@ -74,7 +74,7 @@ def plot_trajectory(goal, goal_vel, real, real_vel):
     """
     import numpy as np
     import pylab as plt
-    colors = [u'r', u'g', u'b']
+    colors = ['m', 'y', 'c', u'r', u'g', u'b']
     goal_positions = []
     real_positions = []
     goal_velocities = []
@@ -105,17 +105,17 @@ def plot_trajectory(goal, goal_vel, real, real_vel):
     ax_y.set_title(u'position_y')
     ax_z.set_title(u'position_z')
     ax2.set_title(u'velocity')
-    ax_x.plot(goal_times, goal_positions[0], 'r--', label='goal_x')
-    ax_y.plot(goal_times, goal_positions[1], 'g--', label='goal_y')
-    ax_z.plot(goal_times, goal_positions[2], 'b--', label='goal_z')
+    ax_x.plot(goal_times, goal_positions[0], 'm', label='goal_x')
+    ax_y.plot(goal_times, goal_positions[1], 'y', label='goal_y')
+    ax_z.plot(goal_times, goal_positions[2], 'c', label='goal_z')
 
     ax_x.plot(real_times, real_positions[0], 'r', label='real_x')
     ax_y.plot(real_times, real_positions[1], 'g', label='real_y')
     ax_z.plot(real_times, real_positions[2], 'b', label='real_z')
     for i, position in enumerate(goal_velocities):
-        ax2.plot(goal_times, goal_velocities[i], colors[i] + '--', label=names[i])
-    for i, position in enumerate(real_velocities):
-        ax2.plot(real_times, real_velocities[i], colors[i] + '', label=names[i])
+        ax2.plot(goal_times, goal_velocities[i], colors[i], label='goal_' + names[i])
+    for j, position in enumerate(real_velocities):
+        ax2.plot(real_times, real_velocities[j], colors[i + j+1], label='real_' + names[i])
     box = ax_x.get_position()
     ax_x.set_position([box.x0, box.y0, box.width * 0.6, box.height])
     box = ax_y.get_position()
@@ -126,7 +126,7 @@ def plot_trajectory(goal, goal_vel, real, real_vel):
     ax2.set_position([box.x0, box.y0, box.width * 0.6, box.height])
 
     # Put a legend to the right of the current axis
-    ax2.legend(loc=u'center', bbox_to_anchor=(1.45, 0), prop={'size': 10})
+    ax2.legend(loc=u'center', bbox_to_anchor=(1.45, 1), prop={'size': 15})
     ax_x.grid()
     ax_y.grid()
     ax_z.grid()
@@ -172,12 +172,12 @@ class OmniPoseFollower(object):
                                            js.position[self.y_index_js],
                                            js.position[self.z_index_js])
 
-        if self.cmd:
+        if self.cmd and rospy.get_rostime().to_sec() > self.start_time:
             if sim:
                 cmd_msg = kdl_to_twist(self.cmd)
             else:
-                cmd = self.current_pose.M.Inverse()*self.cmd
-                cmd = self.limit2(cmd)
+                cmd = self.current_pose.M.Inverse() * self.cmd
+                cmd = self.limit_vel(cmd)
                 cmd_msg = kdl_to_twist(cmd)
             self.real_traj.append([js.header.stamp.to_sec(), self.current_pose])
             self.real_traj_vel.append([js.header.stamp.to_sec(), kdl_to_twist(self.cmd)])
@@ -187,12 +187,12 @@ class OmniPoseFollower(object):
         state.joint_names = [x_joint, y_joint, z_joint]
         self.state_pub.publish(state)
 
-    def limit(self, x, ref):
-        if x>0:
+    def limit_correction(self, x, ref):
+        if x > 0:
             return max(min(x, ref + vel_tolerance), ref - vel_tolerance)
         return min(max(x, ref - vel_tolerance), ref + vel_tolerance)
 
-    def limit2(self, twist):
+    def limit_vel(self, twist):
         twist.vel[0] = max(min(twist.vel[0], self._max_output.vel[0]), self._min_output.vel[0])
         twist.vel[1] = max(min(twist.vel[1], self._max_output.vel[1]), self._min_output.vel[1])
         twist.rot[2] = max(min(twist.rot[2], self._max_output.rot[2]), self._min_output.rot[2])
@@ -221,45 +221,39 @@ class OmniPoseFollower(object):
             self.goal_traj_vel = []
             self.real_traj_vel = []
             self.send_empty_twist()
-            self.start_time = rospy.get_rostime().to_sec()
+            self.start_time = data.trajectory.header.stamp.to_sec()
             while i < len(data.trajectory.points) and not self.server.is_preempt_requested():
                 current_point = data.trajectory.points[i]
-                time_from_start = rospy.get_rostime().to_sec() - self.start_time
+                # time_from_start = rospy.get_rostime().to_sec() - self.start_time
                 time_from_start2 = current_point.time_from_start.to_sec()
-                if time_from_start < time_from_start2:
-                    print('set new goal')
-                    self.current_goal = self.js_to_kdl(current_point.positions[x_index],
-                                                       current_point.positions[y_index],
-                                                       current_point.positions[z_index])
-                    self.current_goal_vel = PyKDL.Twist()
-                    self.current_goal_vel.vel[0] = current_point.velocities[x_index]
-                    self.current_goal_vel.vel[1] = current_point.velocities[y_index]
-                    self.current_goal_vel.rot[2] = current_point.velocities[z_index]
+                self.current_goal = self.js_to_kdl(current_point.positions[x_index],
+                                                   current_point.positions[y_index],
+                                                   current_point.positions[z_index])
+                self.current_goal_vel = PyKDL.Twist()
+                self.current_goal_vel.vel[0] = current_point.velocities[x_index]
+                self.current_goal_vel.vel[1] = current_point.velocities[y_index]
+                self.current_goal_vel.rot[2] = current_point.velocities[z_index]
 
-                    dt = time_from_start2 - last_stamp
-                    last_stamp = time_from_start2
+                dt = time_from_start2 - last_stamp
+                last_stamp = time_from_start2
 
-                    error = (self.current_goal - self.current_pose)
+                error = (self.current_goal - self.current_pose)
 
-                    cmd = error / dt
-                    cmd.vel[0] = self.limit(cmd.vel[0], self.current_goal_vel.vel[0])
-                    cmd.vel[1] = self.limit(cmd.vel[1], self.current_goal_vel.vel[1])
-                    cmd.rot[2] = self.limit(cmd.rot[2], self.current_goal_vel.rot[2])
-                    self.cmd = cmd
-                    self.goal_traj.append([self.start_time + time_from_start2, self.current_goal])
-                    self.goal_traj_vel.append([self.start_time + time_from_start2, self.current_goal_vel])
-                else:
-                    print('skip')
-                    i += 1
-                    continue
+                cmd = error / dt
+                cmd.vel[0] = self.limit_correction(cmd.vel[0], self.current_goal_vel.vel[0])
+                cmd.vel[1] = self.limit_correction(cmd.vel[1], self.current_goal_vel.vel[1])
+                cmd.rot[2] = self.limit_correction(cmd.rot[2], self.current_goal_vel.rot[2])
+                self.cmd = cmd
+                self.goal_traj.append([self.start_time + time_from_start2, self.current_goal])
+                self.goal_traj_vel.append([self.start_time + time_from_start2, self.current_goal_vel])
+                i += 1
                 tfs = rospy.get_rostime().to_sec() - self.start_time
                 asdf = current_point.time_from_start.to_sec() - tfs
-                print('loop sleep for {}'.format(asdf))
                 rospy.sleep(asdf)
             # rospy.sleep(time_tolerance)
             self.cmd = None
             rospy.loginfo('goal reached, final diff: {}'.format(PyKDL.diff(self.current_pose, self.current_goal)))
-            plot_trajectory(self.goal_traj, self.goal_traj_vel, self.real_traj, self.real_traj_vel)
+            # plot_trajectory(self.goal_traj, self.goal_traj_vel, self.real_traj, self.real_traj_vel)
             self.current_goal = None
             self.server.set_succeeded()
         except:
