@@ -177,7 +177,7 @@ class OmniPoseFollower(object):
                 cmd_msg = kdl_to_twist(self.cmd)
             else:
                 cmd = self.current_pose.M.Inverse() * self.cmd
-                cmd = self.limit_vel(cmd)
+                # cmd = self.limit_vel(cmd)
                 cmd_msg = kdl_to_twist(cmd)
             self.real_traj.append([js.header.stamp.to_sec(), self.current_pose])
             self.real_traj_vel.append([js.header.stamp.to_sec(), kdl_to_twist(self.cmd)])
@@ -243,7 +243,7 @@ class OmniPoseFollower(object):
                 cmd.vel[0] = self.limit_correction(cmd.vel[0], self.current_goal_vel.vel[0])
                 cmd.vel[1] = self.limit_correction(cmd.vel[1], self.current_goal_vel.vel[1])
                 cmd.rot[2] = self.limit_correction(cmd.rot[2], self.current_goal_vel.rot[2])
-                self.cmd = cmd
+                self.cmd = self.current_goal_vel * 1.4
                 self.goal_traj.append([self.start_time + time_from_start2, self.current_goal])
                 self.goal_traj_vel.append([self.start_time + time_from_start2, self.current_goal_vel])
                 i += 1

@@ -2,8 +2,9 @@
     <arg name="name_space" default="whole_body_controller/base"/>
     <rosparam command="load" file="$(find omni_pose_follower)/config/ros_control_sim.yaml" />
     <node pkg="omni_pose_follower" type="omni_pose_follower.py" name="omni_pose_follower" output="screen">
+        <remap from="robot_description" to="giskard/robot_description"/>
         <remap from="~/cmd_vel" to="/base_controller/command"/>
-        <!-- <remap from="~/joint_states" to="/joint_states"/> -->
+        <remap from="/joint_states" to="/base/joint_states"/> 
         <!-- <remap from="~follow_joint_trajectory" to="/whole_body_controller/base/follow_joint_trajectory"/> -->
         <!-- <remap from="~state" to="/whole_body_controller/base/state"/> -->
         <param name="name_space" value="$(arg name_space)"/>
