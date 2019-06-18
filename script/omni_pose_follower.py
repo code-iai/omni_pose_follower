@@ -115,7 +115,7 @@ def plot_trajectory(goal, goal_vel, real, real_vel):
     for i, position in enumerate(goal_velocities):
         ax2.plot(goal_times, goal_velocities[i], colors[i], label='goal_' + names[i])
     for j, position in enumerate(real_velocities):
-        ax2.plot(real_times, real_velocities[j], colors[i + j + 1], label='real_' + names[i])
+        ax2.plot(real_times, real_velocities[j], colors[i + j+1], label='real_' + names[i])
     box = ax_x.get_position()
     ax_x.set_position([box.x0, box.y0, box.width * 0.6, box.height])
     box = ax_y.get_position()
@@ -140,10 +140,6 @@ class OmniPoseFollower(object):
     def __init__(self):
         self.goal_traj = []
         self.real_traj = []
-        self.acc_limit = PyKDL.Twist()
-        self.acc_limit.vel.x = 0.1
-        self.acc_limit.vel.y = 0.1
-        self.acc_limit.rot.z = 0.1
 
         urdf = rospy.get_param('robot_description')
         self.urdf = URDF.from_xml_string(hacky_urdf_parser_fix(urdf))
@@ -172,22 +168,16 @@ class OmniPoseFollower(object):
         self.server.start()
 
     def js_cb(self, js):
-        # TODO limit acceleration
         self.current_pose = self.js_to_kdl(js.position[self.x_index_js],
                                            js.position[self.y_index_js],
                                            js.position[self.z_index_js])
-        self.current_vel = self.js_to_kdl(js.velocity[self.x_index_js],
-                                          js.velocity[self.y_index_js],
-                                          js.velocity[self.z_index_js])
 
         if self.cmd and rospy.get_rostime().to_sec() > self.start_time:
             if sim:
                 cmd_msg = kdl_to_twist(self.cmd)
             else:
                 cmd = self.current_pose.M.Inverse() * self.cmd
-                # cmd = self.limit_vel(cmd)
                 cmd = self.limit_vel(cmd)
-                cmd = self.limit_acceleration()
                 cmd_msg = kdl_to_twist(cmd)
             self.real_traj.append([js.header.stamp.to_sec(), self.current_pose])
             self.real_traj_vel.append([js.header.stamp.to_sec(), kdl_to_twist(self.cmd)])
@@ -207,13 +197,6 @@ class OmniPoseFollower(object):
         twist.vel[1] = max(min(twist.vel[1], self._max_output.vel[1]), self._min_output.vel[1])
         twist.rot[2] = max(min(twist.rot[2], self._max_output.rot[2]), self._min_output.rot[2])
         return twist
-
-    def limit_acceleration(self, old_vel, new_vel):
-        vel = PyKDL.Twist()
-        vel.vel[0] = old_vel.vel[0] + min(self.acc_limit.vel[0], new_vel.vel[0] - old_vel.vel[0])
-        vel.vel[1] = old_vel.vel[1] + min(self.acc_limit.vel[1], new_vel.vel[1] - old_vel.vel[1])
-        vel.rot[2] = old_vel.rot[2] + min(self.acc_limit.rot[2], new_vel.rot[2] - old_vel.rot[2])
-        return vel
 
     def send_empty_twist(self):
         self.cmd_vel_sub.publish(Twist())
@@ -260,7 +243,7 @@ class OmniPoseFollower(object):
                 cmd.vel[0] = self.limit_correction(cmd.vel[0], self.current_goal_vel.vel[0])
                 cmd.vel[1] = self.limit_correction(cmd.vel[1], self.current_goal_vel.vel[1])
                 cmd.rot[2] = self.limit_correction(cmd.rot[2], self.current_goal_vel.rot[2])
-                self.cmd = self.current_goal_vel * 1.4
+                self.cmd = cmd
                 self.goal_traj.append([self.start_time + time_from_start2, self.current_goal])
                 self.goal_traj_vel.append([self.start_time + time_from_start2, self.current_goal_vel])
                 i += 1
