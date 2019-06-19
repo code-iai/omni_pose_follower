@@ -12,31 +12,9 @@ from sensor_msgs.msg import JointState
 from tf.transformations import unit_vector
 from urdf_parser_py.urdf import URDF
 
-
-# def pose_to_kdl(pose):
-#     """Convert a geometry_msgs Transform message to a PyKDL Frame.
-#
-#     :param pose: The Transform message to convert.
-#     :type pose: Pose
-#     :return: The converted PyKDL frame.
-#     :rtype: PyKDL.Frame
-#     """
-#     return Frame(PyKDL.Rotation.Quaternion(pose.orientation.x,
-#                                            pose.orientation.y,
-#                                            pose.orientation.z,
-#                                            pose.orientation.w),
-#                  PyKDL.Vector(pose.position.x,
-#                               pose.position.y,
-#                               pose.position.z))
-
-
-# def js_to_frame(x, y, rot):
-#     ps = Pose()
-#     ps.position.x = x
-#     ps.position.y = y
-#     ps.orientation = Quaternion(*quaternion_about_axis(rot, [0, 0, 1]))
-#     return pose_to_kdl(ps)
-
+# TODO possible improvements
+# spline interpolation on original traj
+# limit
 
 def make_twist(x, y, rot):
     t = PyKDL.Twist()
@@ -103,49 +81,53 @@ def hacky_urdf_parser_fix(urdf_str):
 _EPS = np.finfo(float).eps * 4.0
 
 
-def make_cmd2(current_vel, vel_traj, current_pose, pos_traj, pose_history, current_time, time_traj, i):
+def angular_distance(v1, v2):
+    d = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    if abs(abs(d) - 1.0) < _EPS:
+        return 0
+    return np.arccos(d)
+
+
+def make_cmd2(current_vel, vel_traj, current_pose, pos_traj, pose_history, current_time, time_traj, i, eps=1e-5):
     goal_pose = pos_traj[i]
     goal_vel = vel_traj[i]
     pose_error = goal_pose - current_pose
-    dt = time_traj[i] - current_time
-    error_vel = pose_error / dt
+    # dt = time_traj[i] - current_time
+    # error_vel = pose_error / dt
     if np.linalg.norm(current_vel) == 0:
-        current_vel = goal_vel
-    cmd = interpolate(current_vel, error_vel, fraction=0.1)
-    cmd = cmd * max(np.linalg.norm(goal_vel), min(np.linalg.norm(pose_error), 0.1))
-    return cmd
+        # current_vel = goal_vel
+        return goal_vel
+    else:
+        goal_vel2 = vel_traj[i - 1]
+        reference_angle = angular_distance(goal_vel2, goal_vel)
+        needed_angle = angular_distance(current_vel, pose_error)
+        beta = min(needed_angle, reference_angle + 0.01)
+        cmd = interpolate(current_vel, pose_error, beta)
+        if np.linalg.norm(pose_error) < eps:
+            return np.array([0, 0, 0])
+        cmd = cmd * max(np.linalg.norm(goal_vel), min(np.linalg.norm(pose_error), 0.1))
+        return cmd
 
 
-def interpolate(q0, q1, fraction=0.75):
+def interpolate(q0, q1, beta):
     if np.linalg.norm(q0) < _EPS:
         return q1
     q0 = unit_vector(q0)
     q1 = unit_vector(q1)
-    if fraction == 0.0:
+    if beta == 0.0:
         return q0
-    elif fraction == 1.0:
-        return q1
     d = np.dot(q0, q1)
-    if abs(abs(d) - 1.0) < _EPS:
-        return q0
-    if d < 0.0:
-        # invert rotation
-        d = -d
-        q1 *= -1.0
     angle = np.arccos(d)
     if abs(angle) < _EPS:
         return q0
+    fraction = beta / angle
     isin = 1.0 / np.sin(angle)
     q0 *= np.sin((1.0 - fraction) * angle) * isin
     q1 *= np.sin(fraction * angle) * isin
     q0 += q1
     return q0
 
-
-# def scale_cmd(cmd, s):
-#     return cmd) * s
-
-def limitTwist(twist, min_vel_lin_=0.0, max_vel_lin_=0.142, min_vel_th_=0.0, max_vel_th_=0.2, min_in_place_vel_th_=0.0,
+def limitTwist(twist, min_vel_lin_=0.005, max_vel_lin_=0.142, min_vel_th_=0.005, max_vel_th_=0.2, min_in_place_vel_th_=0.0,
                in_place_trans_vel_=0.0):
     res = twist
     # make sure to bound things by our velocity limits
@@ -216,7 +198,6 @@ def make_cmd(current_vel, vel_traj, current_pose, pos_traj, pose_history, curren
                     (ynew_y[10] - ynew_y[0]) / dt,
                     (ynew_z[10] - ynew_z[0]) / dt])
     return cmd
-
 
 def traj_to_poses(traj, x_index, y_index, z_index):
     position_traj = []
