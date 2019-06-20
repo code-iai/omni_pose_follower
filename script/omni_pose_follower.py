@@ -7,7 +7,7 @@ import rospy
 from actionlib import SimpleActionServer
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal, JointTrajectoryControllerState
 from geometry_msgs.msg import Twist, Pose, Quaternion
-from scipy.interpolate import splrep, splev, interp1d
+from scipy.interpolate import interp1d
 from sensor_msgs.msg import JointState
 from tf.transformations import unit_vector, quaternion_about_axis
 from urdf_parser_py.urdf import URDF
@@ -127,7 +127,7 @@ def make_cmd(current_pose, goal_pose, current_vel, goal_vels, current_time, eps=
         if np.linalg.norm(pose_error) < eps:
             return np.array([0, 0, 0])
         cmd = cmd * max(np.linalg.norm(goal_vel), min(np.linalg.norm(pose_error), 0.1))
-        return cmd
+        return goal_vel
 
 
 def interpolate(q0, q1, beta):
@@ -220,6 +220,7 @@ class OmniPoseFollower(object):
         self.pose_history = None
 
         self.cmd_vel_sub = rospy.Publisher('~cmd_vel', Twist, queue_size=10)
+        self.debug_vel = rospy.Publisher('debug_vel', Twist, queue_size=10)
 
         js = rospy.wait_for_message('/joint_states', JointState)
         self.x_index_js = js.name.index(x_joint)
@@ -242,23 +243,34 @@ class OmniPoseFollower(object):
                                 js.velocity[self.y_index_js],
                                 js.velocity[self.z_index_js]])
         time = js.header.stamp.to_sec()
+        self.last_cmd = current_vel
         if not self.done:
             time_from_start = time - self.start_time
             if time_from_start > 0:
 
                 goal_pose = self.pose_traj2(time_from_start)
-                cmd = make_cmd(self.current_pose, goal_pose, current_vel, self.goal_vel2, time_from_start)
+                cmd = make_cmd(self.current_pose, goal_pose, self.last_cmd, self.goal_vel2, time_from_start)
                 if np.any(np.isnan(cmd)):
                     print('fuck')
                 else:
                     cmd = self.limit_vel(cmd)
                     cmd = kdl_to_np(js_to_kdl(*self.current_pose).M.Inverse() * make_twist(*cmd))
+                    self.debug_vel.publish(np_to_msg(cmd))
+                    cmd = self.hack(cmd)
+
                     cmd_msg = np_to_msg(cmd)
                     self.cmd_vel_sub.publish(cmd_msg)
+                    self.last_cmd = cmd
 
         state = JointTrajectoryControllerState()
         state.joint_names = [x_joint, y_joint, z_joint]
         self.state_pub.publish(state)
+
+    def hack(self, vel, eps=0.005):
+        asdf = np.array([0.015, 0.0075, 0.04])
+        vel[np.abs(vel) < eps] = 0
+        vel += np.sign(vel) * asdf
+        return vel
 
     def limit_correction(self, x, ref):
         if x > 0:
@@ -306,7 +318,8 @@ class OmniPoseFollower(object):
             self.done = True
             rospy.sleep(time_tolerance)
             self.cmd = None
-            rospy.loginfo('goal reached, final diff: {}'.format(self.pose_traj2(self.time_traj[-1]) - self.current_pose))
+            rospy.loginfo(
+                'goal reached, final diff: {}'.format(self.pose_traj2(self.time_traj[-1]) - self.current_pose))
             self.current_goal = None
             self.start_time = None
             self.server.set_succeeded()
