@@ -8,6 +8,5 @@
         <!-- <remap from="~state" to="/whole_body_controller/base/state"/> -->
         <param name="name_space" value="$(arg name_space)"/>
         <param name="vel_tolerance" value="0.01"/>
-        <param name="sim" value="True"/>
     </node>
 </launch>
