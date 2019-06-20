@@ -173,12 +173,12 @@ class OmniPoseFollower(object):
                                            js.position[self.z_index_js])
 
         if self.cmd and rospy.get_rostime().to_sec() > self.start_time:
-            if sim:
-                cmd_msg = kdl_to_twist(self.cmd)
-            else:
-                cmd = self.current_pose.M.Inverse() * self.cmd
-                cmd = self.limit_vel(cmd)
-                cmd_msg = kdl_to_twist(cmd)
+            # if sim:
+            #     cmd_msg = kdl_to_twist(self.cmd)
+            # else:
+            cmd = self.current_pose.M.Inverse() * self.cmd
+            cmd = self.limit_vel(cmd)
+            cmd_msg = kdl_to_twist(cmd)
             self.real_traj.append([js.header.stamp.to_sec(), self.current_pose])
             self.real_traj_vel.append([js.header.stamp.to_sec(), kdl_to_twist(self.cmd)])
             self.cmd_vel_sub.publish(cmd_msg)

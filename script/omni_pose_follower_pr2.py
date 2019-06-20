@@ -6,15 +6,40 @@ import PyKDL
 import rospy
 from actionlib import SimpleActionServer
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal, JointTrajectoryControllerState
-from geometry_msgs.msg import Twist
-from scipy.interpolate import splrep, splev
+from geometry_msgs.msg import Twist, Pose, Quaternion
+from scipy.interpolate import splrep, splev, interp1d
 from sensor_msgs.msg import JointState
-from tf.transformations import unit_vector
+from tf.transformations import unit_vector, quaternion_about_axis
 from urdf_parser_py.urdf import URDF
+
 
 # TODO possible improvements
 # spline interpolation on original traj
 # limit
+
+def pose_to_kdl(pose):
+    """Convert a geometry_msgs Transform message to a PyKDL Frame.
+    :param pose: The Transform message to convert.
+    :type pose: Pose
+    :return: The converted PyKDL frame.
+    :rtype: PyKDL.Frame
+    """
+    return PyKDL.Frame(PyKDL.Rotation.Quaternion(pose.orientation.x,
+                                                 pose.orientation.y,
+                                                 pose.orientation.z,
+                                                 pose.orientation.w),
+                       PyKDL.Vector(pose.position.x,
+                                    pose.position.y,
+                                    pose.position.z))
+
+
+def js_to_kdl(x, y, rot):
+    ps = Pose()
+    ps.position.x = x
+    ps.position.y = y
+    ps.orientation = Quaternion(*quaternion_about_axis(rot, [0, 0, 1]))
+    return pose_to_kdl(ps)
+
 
 def make_twist(x, y, rot):
     t = PyKDL.Twist()
@@ -88,9 +113,10 @@ def angular_distance(v1, v2):
     return np.arccos(d)
 
 
-def make_cmd2(current_vel, vel_traj, current_pose, pos_traj, pose_history, current_time, time_traj, i, eps=1e-5):
-    goal_pose = pos_traj[i]
-    goal_vel = vel_traj[i]
+def make_cmd2(current_vel, vel_traj, vel_traj2, current_pose, goal_pose, current_time, time_traj, i, eps=1e-5):
+    # goal_vel = vel_traj[i]
+    goal_vel = vel_traj2(current_time)
+    # print(goal_pose)
     pose_error = goal_pose - current_pose
     # dt = time_traj[i] - current_time
     # error_vel = pose_error / dt
@@ -98,10 +124,13 @@ def make_cmd2(current_vel, vel_traj, current_pose, pos_traj, pose_history, curre
         # current_vel = goal_vel
         return goal_vel
     else:
-        goal_vel2 = vel_traj[i - 1]
+        # goal_vel2 = vel_traj[i - 1]
+        goal_vel2 = vel_traj2(current_time - 0.083)
+        # print(current_time)
         reference_angle = angular_distance(goal_vel2, goal_vel)
         needed_angle = angular_distance(current_vel, pose_error)
         beta = min(needed_angle, reference_angle + 0.01)
+        # print(needed_angle, reference_angle, beta)
         cmd = interpolate(current_vel, pose_error, beta)
         if np.linalg.norm(pose_error) < eps:
             return np.array([0, 0, 0])
@@ -127,7 +156,9 @@ def interpolate(q0, q1, beta):
     q0 += q1
     return q0
 
-def limitTwist(twist, min_vel_lin_=0.005, max_vel_lin_=0.142, min_vel_th_=0.005, max_vel_th_=0.2, min_in_place_vel_th_=0.0,
+
+def limitTwist(twist, min_vel_lin_=0.005, max_vel_lin_=0.142, min_vel_th_=0.005, max_vel_th_=0.2,
+               min_in_place_vel_th_=0.0,
                in_place_trans_vel_=0.0):
     res = twist
     # make sure to bound things by our velocity limits
@@ -199,6 +230,7 @@ def make_cmd(current_vel, vel_traj, current_pose, pos_traj, pose_history, curren
                     (ynew_z[10] - ynew_z[0]) / dt])
     return cmd
 
+
 def traj_to_poses(traj, x_index, y_index, z_index):
     position_traj = []
     vel_traj = []
@@ -221,7 +253,34 @@ def traj_to_poses(traj, x_index, y_index, z_index):
     position_traj = np.array(position_traj)
     vel_traj = np.array(vel_traj)
     time_traj = np.array(time_traj)
-    return position_traj, vel_traj, time_traj
+
+    dtx = interp1d(time_traj, vel_traj[:, 0])
+    dty = interp1d(time_traj, vel_traj[:, 1])
+    dtz = interp1d(time_traj, vel_traj[:, 2])
+
+    def magic(x):
+        x = max(0, x)
+        return np.array([dtx(x), dty(x), dtz(x)])
+
+    vel_traj2 = magic
+
+    fx = interp1d(time_traj, position_traj[:, 0])
+    fy = interp1d(time_traj, position_traj[:, 1])
+    fz = interp1d(time_traj, position_traj[:, 2])
+
+    def magic2(x):
+        x = max(0, x)
+        return np.array([fx(x), fy(x), fz(x)])
+
+    position_traj2 = magic2
+
+    # import matplotlib.pyplot as plt
+    # xnew = np.linspace(0, time_traj[-1], num=41, endpoint=True)
+    # plt.plot(time_traj, vel_traj[:,0], 'x', xnew, fx(xnew), '-')
+    # plt.legend(['data', 'linear', 'cubic'], loc='best')
+    # plt.show()
+
+    return position_traj, vel_traj, time_traj, position_traj2, vel_traj2
 
 
 class OmniPoseFollower(object):
@@ -270,24 +329,10 @@ class OmniPoseFollower(object):
         current_vel = np.array([js.velocity[self.x_index_js],
                                 js.velocity[self.y_index_js],
                                 js.velocity[self.z_index_js]])
-        # current_vel = PyKDL.Twist()
-        # current_vel.vel[0] = js.velocity[self.x_index_js]
-        # current_vel.vel[1] = js.velocity[self.y_index_js]
-        # current_vel.rot[2] = js.velocity[self.z_index_js]
         time = js.header.stamp.to_sec()
-        # if self.pose_history is None:
-        #     self.pose_history = deque([[0, 0, 0], np.array([self.current_pose, current_pose, current_pose])], 3)
-        # else:
-        #     self.pose_history.append([current_pose])
         if not self.done:
-            # if self.cmd and rospy.get_rostime().to_sec() > self.start_time:
             time_from_start = time - self.start_time
             if time_from_start > 0:
-                # if sim:
-                #     cmd = self.cmd
-                #     # cmd_msg = kdl_to_twist(self.cmd)
-                # else:
-                #     cmd = self.current_pose.M.Inverse() * self.cmd
 
                 # if self.done:
                 #     error = (self.current_goal - self.current_pose)
@@ -296,19 +341,16 @@ class OmniPoseFollower(object):
 
                 # cmd = np_to_twist(interpolate(current_vel, error))
                 # cmd = scale_cmd(interpolated_cmd, np.linalg.norm(kdl_to_np(error)))
-                # cmd = self.limit_vel(cmd)
-                cmd = make_cmd2(current_vel, self.vel_traj, self.current_pose, self.pose_traj, self.pose_history,
+                goal_pose = self.pose_traj2(time_from_start)
+                cmd = make_cmd2(current_vel, self.vel_traj, self.vel_traj2, self.current_pose, goal_pose,
                                 time_from_start, self.time_traj, self.current_index)
                 if np.any(np.isnan(cmd)):
                     print('fuck')
                 else:
-                    # cmd = self.limit_acceleration(current_vel, cmd)
+                    # if not sim:
+                    cmd = self.limit_vel(cmd)
+                    cmd = kdl_to_np(js_to_kdl(*self.current_pose).M.Inverse() * make_twist(*cmd))
                     cmd_msg = np_to_msg(cmd)
-
-                    # dt = self.time_traj[self.current_index] - time_from_start
-                    # error = self.pose_traj[self.current_index] - current_pose
-                    # error_dt = error / dt
-                    # cmd_msg = limitTwist(cmd_msg)
                     self.cmd_vel_sub.publish(cmd_msg)
 
         state = JointTrajectoryControllerState()
@@ -320,11 +362,11 @@ class OmniPoseFollower(object):
             return max(min(x, ref + vel_tolerance), ref - vel_tolerance)
         return min(max(x, ref - vel_tolerance), ref + vel_tolerance)
 
-    def limit_vel(self, twist):
-        twist.vel[0] = max(min(twist.vel[0], self._max_vel.vel[0]), self._min_vel.vel[0])
-        twist.vel[1] = max(min(twist.vel[1], self._max_vel.vel[1]), self._min_vel.vel[1])
-        twist.rot[2] = max(min(twist.rot[2], self._max_vel.rot[2]), self._min_vel.rot[2])
-        return twist
+    def limit_vel(self, vel):
+        vel[0] = max(min(vel[0], self._max_vel.vel[0]), self._min_vel.vel[0])
+        vel[1] = max(min(vel[1], self._max_vel.vel[1]), self._min_vel.vel[1])
+        vel[2] = max(min(vel[2], self._max_vel.rot[2]), self._min_vel.rot[2])
+        return vel
 
     def limit_acceleration(self, old_vel, new_vel):
         vel = np.array([old_vel[0] + max(-self.acc_limit.vel[0],
@@ -344,12 +386,10 @@ class OmniPoseFollower(object):
         :return:
         """
         try:
-            self.done = False
             self.last_error = PyKDL.Twist()
             x_index = data.trajectory.joint_names.index(x_joint)
             y_index = data.trajectory.joint_names.index(y_joint)
             z_index = data.trajectory.joint_names.index(z_joint)
-            self.current_index = 0
             self.hz = data.trajectory.points[1].time_from_start.to_sec() - \
                       data.trajectory.points[0].time_from_start.to_sec()
             time_tolerance = 0.1
@@ -357,7 +397,12 @@ class OmniPoseFollower(object):
             self.pose_history = None
             self.send_empty_twist()
             self.start_time = data.trajectory.header.stamp.to_sec()
-            self.pose_traj, self.vel_traj, self.time_traj = traj_to_poses(data, x_index, y_index, z_index)
+            self.pose_traj, self.vel_traj, self.time_traj, self.pose_traj2, self.vel_traj2 = traj_to_poses(data,
+                                                                                                           x_index,
+                                                                                                           y_index,
+                                                                                                           z_index)
+            self.current_index = 0
+            self.done = False
             while self.current_index < len(self.time_traj) - 4 and not self.server.is_preempt_requested():
                 # current_point = data.trajectory.points[self.current_index]
                 current_time = self.time_traj[self.current_index]
