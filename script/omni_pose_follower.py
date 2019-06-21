@@ -267,7 +267,7 @@ class OmniPoseFollower(object):
         self.state_pub.publish(state)
 
     def hack(self, vel, eps=0.005):
-        asdf = np.array([0.015, 0.0075, 0.04])
+        asdf = np.array([0.015, 0.015, 0.04])
         vel[np.abs(vel) < eps] = 0
         vel += np.sign(vel) * asdf
         return vel
