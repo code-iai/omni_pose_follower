@@ -256,7 +256,7 @@ class OmniPoseFollower(object):
                     cmd = self.limit_vel(cmd)
                     cmd = kdl_to_np(js_to_kdl(*self.current_pose).M.Inverse() * make_twist(*cmd))
                     self.debug_vel.publish(np_to_msg(cmd))
-                    cmd = self.hack(cmd)
+                    # cmd = self.hack(cmd)
 
                     cmd_msg = np_to_msg(cmd)
                     self.cmd_vel_sub.publish(cmd_msg)
