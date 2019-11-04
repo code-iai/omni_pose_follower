@@ -239,9 +239,13 @@ class OmniPoseFollower(object):
         self.current_pose = np.array([js.position[self.x_index_js],
                                       js.position[self.y_index_js],
                                       js.position[self.z_index_js]])
-        current_vel = np.array([js.velocity[self.x_index_js],
-                                js.velocity[self.y_index_js],
-                                js.velocity[self.z_index_js]])
+        try:
+            current_vel = np.array([js.velocity[self.x_index_js],
+                                    js.velocity[self.y_index_js],
+                                    js.velocity[self.z_index_js]])
+        except IndexError as e:
+            rospy.logwarn('velocity entry in joint state is empty')
+            return
         time = js.header.stamp.to_sec()
         self.last_cmd = current_vel
         if not self.done:
