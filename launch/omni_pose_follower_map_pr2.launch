@@ -1,0 +1,9 @@
+<launch>
+    <arg name="name_space" default="whole_body_controller/base"/>
+    <rosparam command="load" file="$(find omni_pose_follower)/config/pr2.yaml" />
+    <node pkg="omni_pose_follower" type="omni_pose_follower_map.py" name="omni_pose_follower" output="screen">
+        <remap from="~cmd_vel" to="/base_controller/command"/>
+	    <remap from="robot_description" to="giskard/robot_description"/>
+        <param name="name_space" value="$(arg name_space)"/>
+    </node>
+</launch>
