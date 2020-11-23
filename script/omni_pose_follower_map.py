@@ -49,7 +49,7 @@ class BaseControl(object):
 
   def set_odom_origin(self):
     try:
-      self.tf_listener.waitForTransform("map", odom, rospy.Time(), rospy.Duration(1))
+      self.tf_listener.waitForTransform("map", odom, rospy.Time(), rospy.Duration(10))
     except TransformException as e:
       rospy.logwarn("omni_pose_follower couldn't find odom frame")
     else:
@@ -67,7 +67,10 @@ class BaseControl(object):
       pos, quat = self.tf_listener.lookupTransform("map", base, t)
       map_T_base_footprint = PyKDL.Frame(PyKDL.Rotation.Quaternion(quat[0], quat[1], quat[2], quat[3]), PyKDL.Vector(pos[0], pos[1], pos[2]))
 
-      odom_origin_T_map = self.map_T_odom_origin.Inverse()
+      try:
+        odom_origin_T_map = self.map_T_odom_origin.Inverse()
+      except:
+        exit()
       self.odom_origin_T_base_footprint = odom_origin_T_map * map_T_base_footprint
 
       pos_x = self.odom_origin_T_base_footprint.p.x()
@@ -241,6 +244,8 @@ if __name__ == '__main__':
 
   # start the base control
   BaseControl()
+
+  rospy.loginfo('base controller running')
 
   # keep it running
   rospy.spin()

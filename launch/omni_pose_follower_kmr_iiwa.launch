@@ -1,0 +1,8 @@
+<launch>
+    <arg name="name_space" default="whole_body_controller/base"/>
+    <rosparam command="load" file="$(find omni_pose_follower)/config/kmr_iiwa.yaml" />
+    <node pkg="omni_pose_follower" type="omni_pose_follower_map.py" name="omni_pose_follower" output="screen">
+        <remap from="~cmd_vel" to="/cmd_vel"/>
+        <param name="name_space" value="$(arg name_space)"/>
+    </node>
+</launch>
