@@ -219,15 +219,14 @@ class OmniPoseFollower(object):
         self.last_cmd = PyKDL.Twist()
         self.pose_history = None
 
-        self.cmd_vel_sub = rospy.Publisher('~cmd_vel', Twist, queue_size=10)
+        self.cmd_vel_sub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
         self.debug_vel = rospy.Publisher('debug_vel', Twist, queue_size=10)
-
-        js = rospy.wait_for_message('/joint_states', JointState)
+        js = rospy.wait_for_message('joint_states', JointState)
         self.x_index_js = js.name.index(x_joint)
         self.y_index_js = js.name.index(y_joint)
         self.z_index_js = js.name.index(z_joint)
         self.current_goal = None
-        self.js_sub = rospy.Subscriber('/joint_states', JointState, self.js_cb, queue_size=10)
+        self.js_sub = rospy.Subscriber('joint_states', JointState, self.js_cb, queue_size=10)
         self.state_pub = rospy.Publisher('{}/state'.format(name_space), JointTrajectoryControllerState, queue_size=10)
         self.server = SimpleActionServer('{}/follow_joint_trajectory'.format(name_space),
                                          FollowJointTrajectoryAction,
